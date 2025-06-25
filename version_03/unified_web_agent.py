@@ -768,6 +768,37 @@ class UnifiedWebAgent:
             logger.error(f"Error executing JavaScript: {e}")
             return None
 
+    def generate_filename_from_url(self, url: str, prefix: str = "elements") -> str:
+        """Generate a filename with timestamp and short URL name"""
+        try:
+            from urllib.parse import urlparse
+            import re
+            
+            # Extract domain and path for short name
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc.replace('www.', '')
+            path = parsed_url.path.strip('/').replace('/', '_')
+            
+            # Create short URL name (max 30 chars)
+            if path:
+                short_url = f"{domain}_{path}"[:30]
+            else:
+                short_url = domain[:30]
+            
+            # Remove invalid filename characters
+            short_url = re.sub(r'[<>:"/\\|?*]', '_', short_url)
+            
+            # Create filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{prefix}_{timestamp}_{short_url}.json"
+            
+            return filename
+            
+        except Exception as e:
+            # Fallback to simple timestamp if URL parsing fails
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            return f"{prefix}_{timestamp}.json"
+
 class InteractiveBrowserController:
     """Interactive browser controller for real-time commands"""
     
@@ -782,43 +813,291 @@ class InteractiveBrowserController:
         await self.interactive_loop()
         
     async def interactive_loop(self):
-        """Main interactive command loop"""
+        """Main interactive command loop with simplified menu"""
         while self.running:
             try:
-                print("1. Go to website")
-                print("2. Find elements")
-                print("3. Take screenshot")
-                print("4. Exit")
-                choice = input("Choice: ").strip()
-                
-                if choice == "1":
-                    url = input("URL: ").strip()
-                    if not url.startswith(('http://', 'https://')):
-                        url = 'https://' + url
-                    await self.agent.navigate(url)
-                    print(f"Navigated to {url}")
-                elif choice == "2":
-                    self.current_elements = await self.agent.find_clickable_elements()
-                    print(f"Found {len(self.current_elements)} elements")
-                    for i, elem in enumerate(self.current_elements[:5]):
-                        print(f"{i}: {elem.text[:50]}")
-                    if len(self.current_elements) > 5:
-                        print(f"... and {len(self.current_elements) - 5} more")
-                elif choice == "3":
-                    await self.agent.take_screenshot(f"screenshot_{int(time.time())}.png")
-                elif choice == "4":
-                    self.running = False
+                await self.show_main_menu()
                     
             except KeyboardInterrupt:
-                print("Exiting...")
+                print("\nExiting...")
                 break
             except EOFError:
-                print("Input ended, exiting...")
+                print("\nInput ended, exiting...")
                 break
             except Exception as e:
                 print(f"Error: {e}")
-                break
+                logger.error(f"Interactive loop error: {e}")
         self.running = False
+
+    async def show_main_menu(self):
+        """Show simplified main menu with max 3 options"""
+        print("\n" + "="*40)
+        print("WEB BROWSING AGENT")
+        print("="*40)
+        print("1. Browse & Screenshot")
+        print("2. Find & Click Elements") 
+        print("3. Exit")
+        print("="*40)
+        
+        # Show status
+        if hasattr(self.agent, 'page') and self.agent.page:
+            print(f"Current: {self.agent.state.current_url}")
+        if self.current_elements:
+            print(f"Elements: {len(self.current_elements)} loaded")
+        print()
+        
+        choice = input("Choose option (1-3): ").strip()
+        
+        if choice == "1":
+            await self.browse_menu()
+        elif choice == "2":
+            await self.element_menu()
+        elif choice == "3":
+            print("Goodbye!")
+            self.running = False
+        else:
+            print("Invalid choice. Please try again.")
+
+    async def browse_menu(self):
+        """Website browsing and screenshot submenu"""
+        print("\n" + "="*40)
+        print("BROWSE & SCREENSHOT")
+        print("="*40)
+        print("1. Go to website")
+        print("2. Take screenshot")
+        print("3. Back to main menu")
+        print("="*40)
+        
+        choice = input("Choose option (1-3): ").strip()
+        
+        if choice == "1":
+            await self.handle_navigation()
+        elif choice == "2":
+            await self.handle_screenshot()
+        elif choice == "3":
+            return
+        else:
+            print("Invalid choice.")
+
+    async def element_menu(self):
+        """Find and click elements submenu"""
+        if not self.agent.page:
+            print("ERROR: No website loaded. Go to a website first.")
+            return
+            
+        print("\n" + "="*40)
+        print("FIND & CLICK ELEMENTS")
+        print("="*40)
+        print("1. Find clickable elements")
+        print("2. Click element by number")
+        print("3. View element details")
+        print("="*40)
+        
+        if self.current_elements:
+            print(f"Elements loaded: {len(self.current_elements)}")
+        print()
+        
+        choice = input("Choose option (1-3): ").strip()
+        
+        if choice == "1":
+            await self.handle_find_elements()
+        elif choice == "2":
+            await self.handle_click_element()
+        elif choice == "3":
+            await self.handle_view_elements()
+        else:
+            print("Invalid choice.")
+
+
+    async def handle_navigation(self):
+        """Handle website navigation"""
+        url = input("Enter URL: ").strip()
+        if not url:
+            print("ERROR: URL cannot be empty")
+            return
+        
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        
+        try:
+            print(f"Navigating to {url}...")
+            await self.agent.navigate(url)
+            print(f"SUCCESS: Navigated to {url}")
+            # Clear previous elements since we're on a new page
+            self.current_elements = []
+        except Exception as e:
+            print(f"ERROR: Navigation failed: {e}")
+
+    async def handle_find_elements(self):
+        """Handle finding clickable elements"""
+        if not self.agent.page:
+            print("ERROR: No page loaded. Please navigate to a website first.")
+            return
+        
+        try:
+            print("Searching for clickable elements...")
+            self.current_elements = await self.agent.find_clickable_elements()
+            print(f"SUCCESS: Found {len(self.current_elements)} clickable elements")
+            
+            # Auto-save elements to file with timestamp and short URL
+            if self.current_elements:
+                await self.auto_save_elements()
+                
+                print("\nFirst 10 elements (use option 3 to see all details):")
+                for i, elem in enumerate(self.current_elements[:10]):
+                    text_preview = elem.text[:60] + "..." if len(elem.text) > 60 else elem.text
+                    tag_info = f"<{elem.tag_name}>"
+                    if 'id' in elem.attributes:
+                        tag_info += f" id='{elem.attributes['id']}'"
+                    if 'class' in elem.attributes:
+                        class_preview = elem.attributes['class'][:30] + "..." if len(elem.attributes['class']) > 30 else elem.attributes['class']
+                        tag_info += f" class='{class_preview}'"
+                    print(f"  [{elem.index}] {tag_info} - {text_preview}")
+                
+                if len(self.current_elements) > 10:
+                    print(f"  ... and {len(self.current_elements) - 10} more elements")
+                print("\nTIP: Use option 4 to click an element by its index number")
+            else:
+                print("INFO: No clickable elements found on this page")
+                
+        except Exception as e:
+            print(f"ERROR: Failed to find elements: {e}")
+
+    async def auto_save_elements(self):
+        """Automatically save elements with timestamp and short URL name"""
+        try:
+            # Generate filename using utility function
+            current_url = self.agent.state.current_url
+            filename = self.agent.generate_filename_from_url(current_url, "elements")
+            
+            # Create analysis object and save
+            analysis = PageAnalysis(
+                url=current_url,
+                title=await self.agent.page.title() if self.agent.page else "Unknown",
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                elements=self.current_elements
+            )
+            
+            analysis.save_to_file(filename)
+            print(f"AUTO-SAVED: Elements saved to {filename}")
+            
+        except Exception as e:
+            print(f"WARNING: Auto-save failed: {e}")
+
+    async def handle_view_elements(self):
+        """Handle viewing detailed element information"""
+        if not self.current_elements:
+            print("ERROR: No elements loaded. Use option 2 to find elements first.")
+            return
+        
+        print(f"\nDetailed view of all {len(self.current_elements)} elements:")
+        print("="*80)
+        
+        for elem in self.current_elements:
+            print(f"\n[{elem.index}] Element Details:")
+            print(f"  Tag: <{elem.tag_name}>")
+            print(f"  Text: {elem.text}")
+            print(f"  Visible: {elem.is_visible}")
+            print(f"  In Viewport: {elem.is_in_viewport}")
+            
+            if elem.attributes:
+                print("  Attributes:")
+                for key, value in elem.attributes.items():
+                    if key in ['id', 'class', 'name', 'href', 'type', 'role', 'aria-label']:
+                        value_preview = value[:50] + "..." if len(value) > 50 else value
+                        print(f"    {key}: {value_preview}")
+            
+            if elem.xpath:
+                xpath_preview = elem.xpath[:70] + "..." if len(elem.xpath) > 70 else elem.xpath
+                print(f"  XPath: {xpath_preview}")
+            
+            if elem.bounding_box:
+                bb = elem.bounding_box
+                print(f"  Position: ({bb['x']:.0f}, {bb['y']:.0f}) Size: {bb['width']:.0f}x{bb['height']:.0f}")
+            
+            print("-" * 80)
+
+    async def handle_click_element(self):
+        """Handle clicking an element"""
+        if not self.current_elements:
+            print("ERROR: No elements loaded. Use option 2 to find elements first.")
+            return
+        
+        print(f"Available elements (0-{len(self.current_elements)-1}):")
+        for i, elem in enumerate(self.current_elements[:20]):  # Show first 20
+            text_preview = elem.text[:50] + "..." if len(elem.text) > 50 else elem.text
+            print(f"  [{elem.index}] <{elem.tag_name}> - {text_preview}")
+        
+        if len(self.current_elements) > 20:
+            print(f"  ... and {len(self.current_elements) - 20} more (use option 3 to see all)")
+        
+        try:
+            index_input = input("\nEnter element index to click (or 'cancel'): ").strip()
+            if index_input.lower() == 'cancel':
+                return
+            
+            element_index = int(index_input)
+            
+            if element_index < 0 or element_index >= len(self.current_elements):
+                print(f"ERROR: Invalid index. Please enter a number between 0 and {len(self.current_elements)-1}")
+                return
+            
+            element = self.current_elements[element_index]
+            print(f"Clicking element [{element_index}]: <{element.tag_name}> - {element.text[:50]}")
+            
+            success = await self.agent.click_element(element_index, self.current_elements)
+            if success:
+                print("SUCCESS: Element clicked successfully!")
+                # Wait a moment for page changes
+                await asyncio.sleep(2)
+                print("INFO: Page may have changed. You might want to find elements again.")
+            else:
+                print("ERROR: Failed to click element")
+                
+        except ValueError:
+            print("ERROR: Invalid input. Please enter a valid number.")
+        except Exception as e:
+            print(f"ERROR: Error clicking element: {e}")
+
+    async def handle_type_text(self):
+        """Handle typing text in an element"""
+        if not self.agent.page:
+            print("ERROR: No page loaded. Please navigate to a website first.")
+            return
+        
+        print("Type text in element")
+        selector = input("Enter CSS selector (e.g., '#username', '.search-box'): ").strip()
+        if not selector:
+            print("ERROR: Selector cannot be empty")
+            return
+        
+        text = input("Enter text to type: ").strip()
+        if not text:
+            print("ERROR: Text cannot be empty")
+            return
+        
+        try:
+            success = await self.agent.type_in_element(selector, text)
+            if success:
+                print("SUCCESS: Text typed successfully!")
+            else:
+                print("ERROR: Failed to type text")
+        except Exception as e:
+            print(f"ERROR: Error typing text: {e}")
+
+    async def handle_screenshot(self):
+        """Handle taking screenshot"""
+        if not self.agent.page:
+            print("ERROR: No page loaded. Please navigate to a website first.")
+            return
+        
+        try:
+            timestamp = int(time.time())
+            filename = f"screenshot_{timestamp}.png"
+            await self.agent.take_screenshot(filename)
+            print(f"SUCCESS: Screenshot saved as {filename}")
+        except Exception as e:
+            print(f"ERROR: Failed to take screenshot: {e}")
 
 
 # Utility functions
@@ -893,26 +1172,61 @@ async def run_login_mode():
 async def run_scraper_mode(url: str, output: str = None):
     """Run web scraper mode"""
     print(f"=== SCRAPER MODE ===")
+    
+    # Validate and fix URL format
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+        print(f"Auto-corrected URL to: {url}")
+    
     print(f"Analyzing: {url}")
     
-    async with UnifiedWebAgent() as agent:
-        analysis = await agent.analyze_page(url)
-        analysis.print_elements()
-        
-        if output:
+    try:
+        async with UnifiedWebAgent() as agent:
+            analysis = await agent.analyze_page(url)
+            analysis.print_elements()
+            
+            # Auto-generate filename if not provided
+            if not output:
+                output = agent.generate_filename_from_url(url, "elements")
+            
             analysis.save_to_file(output)
             print(f"Results saved to {output}")
+    except Exception as e:
+        print(f"ERROR: Scraper failed - {e}")
+        if "Cannot navigate to invalid URL" in str(e):
+            print("HINT: Check if the URL is correct and accessible")
+        elif "net::ERR_NAME_NOT_RESOLVED" in str(e):
+            print("HINT: Check your internet connection or the domain name")
+        elif "timeout" in str(e).lower():
+            print("HINT: The website is taking too long to load, try again later")
+        return False
 
 async def run_navigate_mode(url: str):
     """Run simple navigation mode"""
     print(f"=== NAVIGATION MODE ===")
+    
+    # Validate and fix URL format
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+        print(f"Auto-corrected URL to: {url}")
+    
     print(f"Navigating to: {url}")
     
-    async with UnifiedWebAgent() as agent:
-        await agent.navigate(url)
-        await agent.take_screenshot("navigation.png")
-        print(f"Successfully navigated to {agent.page.url}")
-        print("Screenshot saved as navigation.png")
+    try:
+        async with UnifiedWebAgent() as agent:
+            await agent.navigate(url)
+            await agent.take_screenshot("navigation.png")
+            print(f"Successfully navigated to {agent.page.url}")
+            print("Screenshot saved as navigation.png")
+    except Exception as e:
+        print(f"ERROR: Navigation failed - {e}")
+        if "Cannot navigate to invalid URL" in str(e):
+            print("HINT: Check if the URL is correct and accessible")
+        elif "net::ERR_NAME_NOT_RESOLVED" in str(e):
+            print("HINT: Check your internet connection or the domain name")
+        elif "timeout" in str(e).lower():
+            print("HINT: The website is taking too long to load, try again later")
+        return False
 
 def show_main_menu():
     """Show main menu for interactive selection"""

@@ -1,7 +1,6 @@
 *.json
 .env
 venv
-version_01/
 *.log
-version_01/
-*.log
+
+
