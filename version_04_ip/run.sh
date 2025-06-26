@@ -5,7 +5,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/venv"
-PYTHON_SCRIPT="$SCRIPT_DIR/unified_web_agent.py"
+INTERACTIVE_SCRIPT="$SCRIPT_DIR/interactive_controller.py"
+BROWSER_CORE_SCRIPT="$SCRIPT_DIR/browser_core.py"
+LOGIN_SCRIPT="$SCRIPT_DIR/login_manager.py"
+ELEMENT_SCRIPT="$SCRIPT_DIR/element_analyzer.py"
 
 # Check if command exists
 command_exists() {
@@ -111,7 +114,7 @@ status() {
         echo "Environment file: MISSING"
     fi
     
-    if [ -f "$PYTHON_SCRIPT" ]; then
+    if [ -f "$INTERACTIVE_SCRIPT" ]; then
         echo "Main script: EXISTS"
     else
         echo "Main script: MISSING"
@@ -125,79 +128,54 @@ run_app() {
         setup
     fi
     
+    # Select version if not already selected
+    if [ -z "$SELECTED_SCRIPT" ]; then
+        select_version
+    fi
+    
     source "$VENV_DIR/bin/activate"
     
     case "$1" in
         "interactive")
             echo "Starting Interactive Browser Mode..."
-            echo "NEW: Now includes click functionality!"
-            python "$PYTHON_SCRIPT" --mode interactive
+            python "$SELECTED_SCRIPT" --mode interactive
             ;;
         "login")
             echo "Starting Login Mode..."
-            python "$PYTHON_SCRIPT" --mode login
+            python "$SELECTED_SCRIPT" --mode login
             ;;
         "scraper")
             echo "Starting Web Scraper Mode..."
-            python "$PYTHON_SCRIPT" --mode scraper ${2:+--url "$2"}
+            python "$SELECTED_SCRIPT" --mode scraper ${2:+--url "$2"}
             ;;
         "navigate")
             echo "Starting Navigation Mode..."
-            python "$PYTHON_SCRIPT" --mode navigate ${2:+--url "$2"}
+            python "$SELECTED_SCRIPT" --mode navigate ${2:+--url "$2"}
             ;;
         *)
-            python "$PYTHON_SCRIPT" "$@"
+            python "$SELECTED_SCRIPT" "$@"
             ;;
     esac
 }
+
+# Version selection - simplified to always use interactive controller
+select_version() {
+    SELECTED_SCRIPT="$INTERACTIVE_SCRIPT"
+}
+
 
 # Main menu
 show_menu() {
     echo "=========================================="
     echo "         WEB BROWSING AGENT"
     echo "=========================================="
-    echo "1. Interactive Mode - Browse & click elements"
-    echo "2. Quick Actions - Login/Scrape/Navigate"
+    echo "1. Browse Website"
+    echo "2. Login to Website"
     echo "3. Exit"
     echo "=========================================="
 }
 
-# Quick actions submenu
-quick_actions_menu() {
-    echo "=========================================="
-    echo "         QUICK ACTIONS"
-    echo "=========================================="
-    echo "1. Login to website"
-    echo "2. Scrape website elements"
-    echo "3. Navigate & screenshot"
-    echo "=========================================="
-    read -p "Choose option (1-3): " choice
-    
-    case "$choice" in
-        1) 
-            run_app login 
-            ;;
-        2) 
-            read -p "Enter URL to analyze: " url
-            # Auto-correct URL format if needed
-            if [[ ! "$url" =~ ^https?:// ]]; then
-                url="https://$url"
-            fi
-            run_app scraper "$url" 
-            ;;
-        3) 
-            read -p "Enter URL to navigate: " url
-            # Auto-correct URL format if needed
-            if [[ ! "$url" =~ ^https?:// ]]; then
-                url="https://$url"
-            fi
-            run_app navigate "$url" 
-            ;;
-        *) 
-            echo "Invalid choice." 
-            ;;
-    esac
-}
+
 
 # Main execution
 case "${1:-menu}" in
@@ -220,7 +198,7 @@ case "${1:-menu}" in
                     run_app interactive 
                     ;;
                 2) 
-                    quick_actions_menu
+                    run_app login
                     ;;
                 3) 
                     echo "Goodbye!"
@@ -235,7 +213,14 @@ case "${1:-menu}" in
         done
         ;;
     *)
-        echo "Usage: $0 [setup|status|interactive|login|scraper|navigate|menu]"
-        echo "Run without arguments for interactive menu"
+        echo "Usage: $0 [command]"
+        echo ""
+        echo "Commands:"
+        echo "  setup              - Install dependencies"
+        echo "  status             - Check system status"
+        echo "  interactive        - Browse websites"
+        echo "  login              - Login to websites"
+        echo ""
+        echo "Run without arguments for menu"
         ;;
 esac
