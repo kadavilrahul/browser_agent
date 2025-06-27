@@ -1,0 +1,7 @@
+Combines all functionality into one file
+Has minimalistic menu options
+Uses .env for all default options
+Integrates with Google's Gemini API for AI-assisted browsing
+Integrates agno agent for validation and smooth execution
+Creates a test_run.sh for automated testing
+Saves default login URLs for popular websites 
