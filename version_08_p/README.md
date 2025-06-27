@@ -60,7 +60,7 @@ playwright install chromium
 cp sample.env .env
 
 # Run the application
-python unified_web_agent.py
+python web_agent.py
 ```
 
 ### Application Modes
@@ -105,7 +105,7 @@ If you encounter issues:
 ```
 .
 ├── run.sh                 # Main launcher script
-├── unified_web_agent.py   # Core application
+├── web_agent.py         # Core application
 ├── test_setup.py         # Setup verification
 ├── requirements.txt      # Python dependencies
 ├── sample.env           # Environment template

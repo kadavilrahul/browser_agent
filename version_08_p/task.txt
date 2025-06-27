@@ -1,7 +1,19 @@
-Combines all functionality into one file
+Tasks for full browser automation:
+
+1. The task is to build or modify the the existing codebase so that it works on two modes 1. Automated using LLM API 2. Manual
+2. The settings for these should be mentioned in .env
+3. The manual section seem to be in place
+4. Build proper fully automated broswer actions script using agno and gemini API
+5. When a user visits he should be able to browse and login completely every website using only natural language chat in sentences
+6. Check reference.txt for agno ducumentation
+7. Gemini API is already in .env
+8. Run end to end test for full automation
+
+The codebase should have -
 Has minimalistic menu options
 Uses .env for all default options
 Integrates with Google's Gemini API for AI-assisted browsing
 Integrates agno agent for validation and smooth execution
 Creates a test_run.sh for automated testing
 Saves default login URLs for popular websites 
+Search https://docs.agno.com/introduction or internet for any tutorial etc

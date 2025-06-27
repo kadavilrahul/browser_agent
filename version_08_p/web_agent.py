@@ -125,6 +125,14 @@ class Config:
         self.gemini_model = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')
         self.gemini_endpoint = os.getenv('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta/models/')
         
+        # Automation Configuration
+        self.automation_mode = os.getenv('AUTOMATION_MODE', 'false').lower() == 'true'
+        self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
+        self.openai_model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+        self.max_automation_steps = int(os.getenv('MAX_AUTOMATION_STEPS', '10'))
+        self.automation_delay = int(os.getenv('AUTOMATION_DELAY', '2'))
+        self.default_mode = os.getenv('DEFAULT_MODE', 'interactive')
+        
         # Popular website URLs
         self.website_urls = {
             'github': os.getenv('GITHUB_URL', 'https://github.com/login'),
@@ -436,17 +444,32 @@ class AgnoAgent:
             return
         
         try:
-            # Note: This would require OpenAI API key for full functionality
-            # For now, we'll create a basic agent structure
-            self.agent = Agent(
-                model=None,  # Would need OpenAI model here
-                description="Web browsing validation and execution agent",
-                markdown=True,
-                exponential_backoff=True,
-                retries=2,
-                retry_delay=1
-            )
-            logger.info("Agno agent structure initialized")
+            # Initialize with OpenAI model if API key is available
+            if self.config.openai_api_key and self.config.openai_api_key != 'your_openai_api_key_here':
+                model = OpenAIChat(
+                    id=self.config.openai_model,
+                    api_key=self.config.openai_api_key
+                )
+                self.agent = Agent(
+                    model=model,
+                    description="Web browsing validation and execution agent that helps with automated browser actions",
+                    markdown=True,
+                    exponential_backoff=True,
+                    retries=2,
+                    retry_delay=1
+                )
+                logger.info("Agno agent initialized with OpenAI model")
+            else:
+                # Create basic agent structure without model
+                self.agent = Agent(
+                    model=None,
+                    description="Web browsing validation and execution agent",
+                    markdown=True,
+                    exponential_backoff=True,
+                    retries=2,
+                    retry_delay=1
+                )
+                logger.warning("Agno agent initialized without OpenAI model - limited functionality")
         except Exception as e:
             logger.error(f"Failed to initialize Agno agent: {e}")
             self.agent = None
@@ -583,6 +606,161 @@ class AgnoAgent:
             context_analysis["is_search_page"] = True
 
         return context_analysis
+    
+    async def plan_automation_steps(self, user_goal: str, page_context: Dict[str, Any], elements: List[ElementInfo]) -> List[Dict[str, Any]]:
+        """Plan automation steps using Agno agent"""
+        if not self.agent or not self.agent.model:
+            # Fallback to basic planning without AI
+            return self._basic_automation_planning(user_goal, page_context, elements)
+        
+        try:
+            # Prepare context for AI planning
+            context_prompt = f"""
+            User Goal: {user_goal}
+            
+            Page Context:
+            - URL: {page_context.get('url', 'Unknown')}
+            - Title: {page_context.get('title', 'Unknown')}
+            - Is Login Page: {page_context.get('is_login_page', False)}
+            - Is Form Page: {page_context.get('is_form_page', False)}
+            - Is Search Page: {page_context.get('is_search_page', False)}
+            
+            Available Elements (first 15):
+            """
+            
+            for i, elem in enumerate(elements[:15]):
+                context_prompt += f"\n{i}: <{elem.tag_name}> {elem.text[:50]} (id: {elem.attributes.get('id', 'N/A')})"
+            
+            context_prompt += """
+            
+            Please create a step-by-step automation plan to achieve the user goal.
+            Return a JSON array of steps, where each step has:
+            - "action": "navigate", "click", "fill", "wait", or "screenshot"
+            - "target": element index or URL (for navigate)
+            - "value": text to fill (for fill action)
+            - "description": human-readable description
+            - "confidence": confidence level 0-100
+            
+            Example:
+            [
+                {"action": "click", "target": 2, "description": "Click login button", "confidence": 90},
+                {"action": "fill", "target": 0, "value": "username", "description": "Fill username field", "confidence": 85}
+            ]
+            """
+            
+            response = self.agent.run(context_prompt)
+            
+            # Parse the response
+            if hasattr(response, 'content'):
+                response_text = response.content
+            else:
+                response_text = str(response)
+            
+            # Try to extract JSON from response
+            import re
+            json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+            if json_match:
+                try:
+                    steps = json.loads(json_match.group())
+                    logger.info(f"AI planned {len(steps)} automation steps")
+                    return steps
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse AI response as JSON")
+            
+            # Fallback to basic planning
+            return self._basic_automation_planning(user_goal, page_context, elements)
+            
+        except Exception as e:
+            logger.error(f"AI automation planning failed: {e}")
+            return self._basic_automation_planning(user_goal, page_context, elements)
+    
+    def _basic_automation_planning(self, user_goal: str, page_context: Dict[str, Any], elements: List[ElementInfo]) -> List[Dict[str, Any]]:
+        """Basic automation planning without AI"""
+        steps = []
+        goal_lower = user_goal.lower()
+        
+        if "login" in goal_lower:
+            # Find username/email field
+            for elem in elements:
+                if elem.tag_name == "input" and elem.attributes.get("type") in ["email", "text"]:
+                    steps.append({
+                        "action": "fill",
+                        "target": elem.index,
+                        "value": "test_user",
+                        "description": f"Fill username field: {elem.text[:30]}",
+                        "confidence": 70
+                    })
+                    break
+            
+            # Find password field
+            for elem in elements:
+                if elem.tag_name == "input" and elem.attributes.get("type") == "password":
+                    steps.append({
+                        "action": "fill",
+                        "target": elem.index,
+                        "value": "test_password",
+                        "description": f"Fill password field: {elem.text[:30]}",
+                        "confidence": 70
+                    })
+                    break
+            
+            # Find submit button
+            for elem in elements:
+                if (elem.tag_name == "button" and "submit" in elem.text.lower()) or \
+                   (elem.tag_name == "input" and elem.attributes.get("type") == "submit"):
+                    steps.append({
+                        "action": "click",
+                        "target": elem.index,
+                        "description": f"Click submit button: {elem.text[:30]}",
+                        "confidence": 80
+                    })
+                    break
+        
+        elif "search" in goal_lower:
+            # Find search input
+            for elem in elements:
+                if elem.tag_name == "input" and ("search" in elem.attributes.get("name", "").lower() or 
+                                                "search" in elem.attributes.get("placeholder", "").lower()):
+                    steps.append({
+                        "action": "fill",
+                        "target": elem.index,
+                        "value": "test search",
+                        "description": f"Fill search field: {elem.text[:30]}",
+                        "confidence": 75
+                    })
+                    break
+            
+            # Find search button
+            for elem in elements:
+                if elem.tag_name == "button" and "search" in elem.text.lower():
+                    steps.append({
+                        "action": "click",
+                        "target": elem.index,
+                        "description": f"Click search button: {elem.text[:30]}",
+                        "confidence": 75
+                    })
+                    break
+        
+        elif "form" in goal_lower or "fill" in goal_lower:
+            # Find form inputs
+            for elem in elements:
+                if elem.tag_name == "input" and elem.attributes.get("type") in ["text", "email", "tel"]:
+                    steps.append({
+                        "action": "fill",
+                        "target": elem.index,
+                        "value": "test data",
+                        "description": f"Fill form field: {elem.text[:30]}",
+                        "confidence": 60
+                    })
+        
+        # Add screenshot step
+        steps.append({
+            "action": "screenshot",
+            "description": "Take final screenshot",
+            "confidence": 100
+        })
+        
+        return steps
 
 class UnifiedWebAgent:
     """Unified web browsing agent with AI integration and all functionalities"""
@@ -988,10 +1166,551 @@ class UnifiedWebAgent:
             # Fallback to simple timestamp if URL parsing fails
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             return f"{prefix}_{timestamp}.json"
-
+    
+    async def fill_element(self, element_index: int, value: str, elements: List[ElementInfo]) -> bool:
+        """Fill an input element with text"""
+        if not self.page:
+            return False
+        
+        element = next((e for e in elements if e.index == element_index), None)
+        if not element:
+            logger.warning(f"Element with index {element_index} not found")
+            return False
+        
+        try:
+            # Attempt to fill using different strategies
+            success = False
+            
+            # Strategy 1: XPath
+            if element.xpath and not success:
+                try:
+                    await self.page.fill(f"xpath={element.xpath}", value)
+                    success = True
+                    logger.info(f"Filled element {element_index} using XPath")
+                except:
+                    pass
+            
+            # Strategy 2: ID selector
+            if "id" in element.attributes and not success:
+                try:
+                    await self.page.fill(f"#{element.attributes['id']}", value)
+                    success = True
+                    logger.info(f"Filled element {element_index} using ID selector")
+                except:
+                    pass
+            
+            # Strategy 3: Click and type
+            if not success:
+                try:
+                    if element.bounding_box:
+                        x = element.bounding_box["x"] + element.bounding_box["width"] / 2
+                        y = element.bounding_box["y"] + element.bounding_box["height"] / 2
+                        await self.page.mouse.click(x, y)
+                        await self.page.keyboard.type(value)
+                        success = True
+                        logger.info(f"Filled element {element_index} using click and type")
+                except:
+                    pass
+            
+            if success:
+                await asyncio.sleep(1)  # Wait for input to register
+            
+            return success
+            
         except Exception as e:
-            logger.error(f"Login error: {e}")
-            return False        
+            logger.error(f"Error filling element {element_index}: {e}")
+            return False
+    
+    async def execute_automation_step(self, step: Dict[str, Any], elements: List[ElementInfo]) -> bool:
+        """Execute a single automation step"""
+        action = step.get("action", "")
+        target = step.get("target")
+        value = step.get("value", "")
+        description = step.get("description", "")
+        
+        logger.info(f"Executing step: {description}")
+        print(f"🤖 {description}")
+        
+        try:
+            if action == "click":
+                return await self.click_element(target, elements)
+            
+            elif action == "fill":
+                return await self.fill_element(target, value, elements)
+            
+            elif action == "navigate":
+                await self.navigate(target)
+                return True
+            
+            elif action == "wait":
+                wait_time = int(value) if value else self.config.automation_delay
+                await asyncio.sleep(wait_time)
+                return True
+            
+            elif action == "screenshot":
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"automation_{timestamp}.png"
+                await self.take_screenshot(filename)
+                return True
+            
+            else:
+                logger.warning(f"Unknown action: {action}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to execute step: {e}")
+            return False
+    
+    async def run_automation(self, user_goal: str) -> Dict[str, Any]:
+        """Run full automation based on user goal"""
+        results = {
+            "goal": user_goal,
+            "success": False,
+            "steps_executed": 0,
+            "total_steps": 0,
+            "errors": [],
+            "screenshots": []
+        }
+        
+        try:
+            # Analyze current page
+            if not self.page:
+                results["errors"].append("No page loaded")
+                return results
+            
+            title = await self.page.title()
+            elements = await self.find_clickable_elements()
+            page_context = await self.agno_agent.analyze_page_context(
+                self.state.current_url, title, elements
+            )
+            
+            # Plan automation steps
+            print(f"🧠 Planning automation steps for: {user_goal}")
+            steps = await self.agno_agent.plan_automation_steps(user_goal, page_context, elements)
+            
+            if not steps:
+                results["errors"].append("No automation steps planned")
+                return results
+            
+            results["total_steps"] = len(steps)
+            print(f"📋 Planned {len(steps)} automation steps")
+            
+            # Execute steps
+            for i, step in enumerate(steps[:self.config.max_automation_steps]):
+                print(f"\n📍 Step {i+1}/{len(steps)}: {step.get('description', 'Unknown step')}")
+                
+                # Re-scan elements before each step (page might have changed)
+                if step.get("action") in ["click", "fill"]:
+                    elements = await self.find_clickable_elements()
+                
+                success = await self.execute_automation_step(step, elements)
+                
+                if success:
+                    results["steps_executed"] += 1
+                    print("✅ Step completed successfully")
+                    
+                    # Wait between steps
+                    await asyncio.sleep(self.config.automation_delay)
+                else:
+                    error_msg = f"Step {i+1} failed: {step.get('description', 'Unknown')}"
+                    results["errors"].append(error_msg)
+                    print(f"❌ {error_msg}")
+                    
+                    # Continue with next step instead of stopping
+                    continue
+            
+            # Final screenshot
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_screenshot = f"automation_final_{timestamp}.png"
+            await self.take_screenshot(final_screenshot)
+            results["screenshots"].append(final_screenshot)
+            
+            # Determine overall success
+            if results["steps_executed"] > 0:
+                results["success"] = True
+                print(f"\n🎉 Automation completed! {results['steps_executed']}/{results['total_steps']} steps executed")
+            else:
+                print(f"\n❌ Automation failed - no steps executed successfully")
+            
+        except Exception as e:
+            error_msg = f"Automation error: {str(e)}"
+            results["errors"].append(error_msg)
+            logger.error(error_msg)
+            print(f"❌ {error_msg}")
+        
+        return results
+    
+    async def fill_element(self, element_index: int, value: str, elements: List[ElementInfo]) -> bool:
+        """Fill an input element with text"""
+        if not self.page:
+            return False
+        
+        element = next((e for e in elements if e.index == element_index), None)
+        if not element:
+            logger.warning(f"Element with index {element_index} not found")
+            return False
+        
+        try:
+            # Attempt to fill using different strategies
+            success = False
+            
+            # Strategy 1: XPath
+            if element.xpath and not success:
+                try:
+                    await self.page.fill(f"xpath={element.xpath}", value)
+                    success = True
+                    logger.info(f"Filled element {element_index} using XPath")
+                except:
+                    pass
+            
+            # Strategy 2: ID selector
+            if "id" in element.attributes and not success:
+                try:
+                    await self.page.fill(f"#{element.attributes['id']}", value)
+                    success = True
+                    logger.info(f"Filled element {element_index} using ID selector")
+                except:
+                    pass
+            
+            # Strategy 3: Click and type
+            if not success:
+                try:
+                    if element.bounding_box:
+                        x = element.bounding_box["x"] + element.bounding_box["width"] / 2
+                        y = element.bounding_box["y"] + element.bounding_box["height"] / 2
+                        await self.page.mouse.click(x, y)
+                        await self.page.keyboard.type(value)
+                        success = True
+                        logger.info(f"Filled element {element_index} using click and type")
+                except:
+                    pass
+            
+            if success:
+                await asyncio.sleep(1)  # Wait for input to register
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error filling element {element_index}: {e}")
+            return False
+    
+    async def execute_automation_step(self, step: Dict[str, Any], elements: List[ElementInfo]) -> bool:
+        """Execute a single automation step"""
+        action = step.get("action", "")
+        target = step.get("target")
+        value = step.get("value", "")
+        description = step.get("description", "")
+        
+        logger.info(f"Executing step: {description}")
+        print(f"🤖 {description}")
+        
+        try:
+            if action == "click":
+                return await self.click_element(target, elements)
+            
+            elif action == "fill":
+                return await self.fill_element(target, value, elements)
+            
+            elif action == "navigate":
+                await self.navigate(target)
+                return True
+            
+            elif action == "wait":
+                wait_time = int(value) if value else self.config.automation_delay
+                await asyncio.sleep(wait_time)
+                return True
+            
+            elif action == "screenshot":
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"automation_{timestamp}.png"
+                await self.take_screenshot(filename)
+                return True
+            
+            else:
+                logger.warning(f"Unknown action: {action}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to execute step: {e}")
+            return False
+    
+    async def run_automation(self, user_goal: str) -> bool:
+        """Run full automation based on user goal"""
+        try:
+            print(f"🚀 Starting automation for goal: {user_goal}")
+            
+            # Analyze current page
+            if not self.page:
+                print("❌ No page loaded. Please navigate to a website first.")
+                return False
+            
+            title = await self.page.title()
+            elements = await self.find_clickable_elements()
+            page_context = await self.agno_agent.analyze_page_context(
+                self.state.current_url, title, elements
+            )
+            
+            print(f"📄 Current page: {title}")
+            print(f"🔍 Found {len(elements)} interactive elements")
+            
+            # Plan automation steps
+            print("🧠 Planning automation steps...")
+            steps = await self.agno_agent.plan_automation_steps(user_goal, page_context, elements)
+            
+            if not steps:
+                print("❌ No automation steps could be planned")
+                return False
+            
+            print(f"📋 Planned {len(steps)} steps:")
+            for i, step in enumerate(steps, 1):
+                print(f"   {i}. {step.get('description', 'Unknown step')}")
+            
+            # Execute steps
+            print("\n🎯 Executing automation steps...")
+            success_count = 0
+            
+            for i, step in enumerate(steps, 1):
+                if i > self.config.max_automation_steps:
+                    print(f"⚠️  Reached maximum steps limit ({self.config.max_automation_steps})")
+                    break
+                
+                print(f"\n📍 Step {i}/{len(steps)}")
+                success = await self.execute_automation_step(step, elements)
+                
+                if success:
+                    success_count += 1
+                    print("✅ Step completed successfully")
+                    
+                    # Re-scan elements after each step (except screenshot)
+                    if step.get("action") not in ["screenshot", "wait"]:
+                        await asyncio.sleep(self.config.automation_delay)
+                        try:
+                            elements = await self.find_clickable_elements()
+                        except:
+                            pass  # Continue even if element scan fails
+                else:
+                    print("❌ Step failed")
+                    
+                    # Ask user if they want to continue
+                    if i < len(steps):
+                        continue_choice = input("Continue with next step? (y/N): ").strip().lower()
+                        if continue_choice != "y":
+                            break
+            
+            # Summary
+            print(f"\n📊 Automation Summary:")
+            print(f"   ✅ Successful steps: {success_count}/{len(steps)}")
+            print(f"   📄 Final page: {await self.page.title()}")
+            
+            # Take final screenshot
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_screenshot = f"automation_final_{timestamp}.png"
+            await self.take_screenshot(final_screenshot)
+            print(f"   📸 Final screenshot: {final_screenshot}")
+            
+            return success_count > 0
+            
+        except Exception as e:
+            logger.error(f"Automation failed: {e}")
+            print(f"❌ Automation failed: {e}")
+            return False
+    
+    async def fill_element(self, element_index: int, value: str, elements: List[ElementInfo]) -> bool:
+        """Fill an input element with text"""
+        if not self.page:
+            return False
+        
+        element = next((e for e in elements if e.index == element_index), None)
+        if not element:
+            logger.warning(f"Element with index {element_index} not found")
+            return False
+        
+        try:
+            # Attempt to fill using different strategies
+            success = False
+            
+            # Strategy 1: XPath
+            if element.xpath and not success:
+                try:
+                    await self.page.fill(f"xpath={element.xpath}", value)
+                    success = True
+                    logger.info(f"Filled element {element_index} using XPath")
+                except:
+                    pass
+            
+            # Strategy 2: ID selector
+            if "id" in element.attributes and not success:
+                try:
+                    await self.page.fill(f"#{element.attributes['id']}", value)
+                    success = True
+                    logger.info(f"Filled element {element_index} using ID selector")
+                except:
+                    pass
+            
+            # Strategy 3: Click and type
+            if not success:
+                try:
+                    if element.bounding_box:
+                        x = element.bounding_box["x"] + element.bounding_box["width"] / 2
+                        y = element.bounding_box["y"] + element.bounding_box["height"] / 2
+                        await self.page.mouse.click(x, y)
+                        await self.page.keyboard.type(value)
+                        success = True
+                        logger.info(f"Filled element {element_index} using click and type")
+                except:
+                    pass
+            
+            if success:
+                await asyncio.sleep(1)  # Wait for potential changes
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error filling element {element_index}: {e}")
+            return False
+    
+    async def execute_automation_step(self, step: Dict[str, Any], elements: List[ElementInfo]) -> bool:
+        """Execute a single automation step"""
+        action = step.get("action", "")
+        target = step.get("target")
+        value = step.get("value", "")
+        description = step.get("description", "")
+        
+        logger.info(f"Executing step: {description}")
+        print(f"🤖 {description}")
+        
+        try:
+            if action == "click":
+                return await self.click_element(target, elements)
+            
+            elif action == "fill":
+                return await self.fill_element(target, value, elements)
+            
+            elif action == "navigate":
+                await self.navigate(target)
+                return True
+            
+            elif action == "wait":
+                wait_time = int(value) if value else self.config.automation_delay
+                await asyncio.sleep(wait_time)
+                return True
+            
+            elif action == "screenshot":
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"automation_screenshot_{timestamp}.png"
+                await self.take_screenshot(filename)
+                return True
+            
+            else:
+                logger.warning(f"Unknown action: {action}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to execute step: {e}")
+            return False
+    
+    async def run_automation(self, user_goal: str, url: str = None) -> Dict[str, Any]:
+        """Run full automation based on user goal"""
+        results = {
+            "goal": user_goal,
+            "success": False,
+            "steps_executed": 0,
+            "total_steps": 0,
+            "errors": [],
+            "screenshots": []
+        }
+        
+        try:
+            # Navigate to URL if provided
+            if url:
+                await self.navigate(url)
+                await asyncio.sleep(2)
+            
+            # Analyze current page
+            if not self.page:
+                results["errors"].append("No page loaded")
+                return results
+            
+            title = await self.page.title()
+            elements = await self.find_clickable_elements()
+            page_context = await self.agno_agent.analyze_page_context(
+                self.state.current_url, title, elements
+            )
+            
+            # Plan automation steps
+            print(f"🧠 Planning automation steps for: {user_goal}")
+            steps = await self.agno_agent.plan_automation_steps(user_goal, page_context, elements)
+            
+            if not steps:
+                results["errors"].append("No automation steps planned")
+                return results
+            
+            results["total_steps"] = len(steps)
+            print(f"📋 Planned {len(steps)} automation steps")
+            
+            # Execute steps
+            for i, step in enumerate(steps[:self.config.max_automation_steps]):
+                print(f"\n📍 Step {i+1}/{len(steps)}: {step.get('description', 'Unknown step')}")
+                
+                # Re-scan elements before each step (page might have changed)
+                if step.get("action") in ["click", "fill"]:
+                    elements = await self.find_clickable_elements()
+                
+                success = await self.execute_automation_step(step, elements)
+                
+                if success:
+                    results["steps_executed"] += 1
+                    print("✅ Step completed successfully")
+                    
+                    # Wait between steps
+                    await asyncio.sleep(self.config.automation_delay)
+                else:
+                    error_msg = f"Step {i+1} failed: {step.get('description', 'Unknown')}"
+                    results["errors"].append(error_msg)
+                    print(f"❌ {error_msg}")
+                    
+                    # Continue with next step instead of stopping
+                    continue
+            
+            # Final screenshot
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_screenshot = f"automation_final_{timestamp}.png"
+            await self.take_screenshot(final_screenshot)
+            results["screenshots"].append(final_screenshot)
+            
+            # Determine overall success
+            if results["steps_executed"] > 0:
+                results["success"] = True
+                print(f"\n🎉 Automation completed! {results['steps_executed']}/{results['total_steps']} steps executed")
+            else:
+                print(f"\n❌ Automation failed - no steps executed successfully")
+            
+        except Exception as e:
+            error_msg = f"Automation error: {str(e)}"
+            results["errors"].append(error_msg)
+            logger.error(error_msg)
+            print(f"❌ {error_msg}")
+        
+        return results
+
+class InteractiveBrowserController:
+    """Interactive browser controller for user interaction"""
+    
+    def __init__(self, agent: UnifiedWebAgent):
+        self.agent = agent
+        self.current_elements = []
+        self.running = True
+    
+    async def start_interactive_session(self):
+        """Start the interactive browsing session"""
+        print("🚀 Starting interactive session...")
+        
+        # Initial element scan
+        await self.handle_find_elements()
+        
+        # Start interactive loop
+        await self.interactive_loop()
+    
     async def interactive_loop(self):
         """Main interactive command loop"""
         while self.running:
@@ -1146,19 +1865,19 @@ class UnifiedWebAgent:
             suggestion = await self.agent.get_ai_element_suggestion(user_intent)
             
             if "error" in suggestion:
-                print(f"❌ AI suggestion failed: {suggestion[error]}")
+                print(f"❌ AI suggestion failed: {suggestion['error']}")
                 return
             
             print(f"🎯 AI Recommendation:")
-            print(f"   Element: {suggestion.get(recommended_element, None)}")
-            print(f"   Confidence: {suggestion.get(confidence, 0)}%")
-            print(f"   Action: {suggestion.get(action_type, Unknown)}")
+            print(f"   Element: {suggestion.get('recommended_element', None)}")
+            print(f"   Confidence: {suggestion.get('confidence', 0)}%")
+            print(f"   Action: {suggestion.get('action_type', 'Unknown')}")
             print(f"   Reasoning: {suggestion.get('reasoning', 'No reasoning provided')}")
             
-            if suggestion.get(recommended_element, -1) >= 0:
+            if suggestion.get('recommended_element', -1) >= 0:
                 proceed = input("🤔 Would you like to execute this suggestion? (y/N): ").strip().lower()
-                if proceed == y:
-                    element_index = suggestion[recommended_element]
+                if proceed == "y":
+                    element_index = suggestion['recommended_element']
                     success = await self.agent.click_element(element_index, self.current_elements)
                     if success:
                         print("✅ AI suggestion executed successfully!")
@@ -1285,9 +2004,10 @@ def show_main_menu():
     print("🤖 UNIFIED WEB AGENT WITH AI INTEGRATION")
     print("=" * 60)
     print("1. 🌐 Interactive Browsing Mode")
-    print("2. 🔐 Login Mode")
-    print("3. 🧪 Test Mode (Demo)")
-    print("4. ❌ Exit")
+    print("2. 🤖 Automated Mode (Natural Language)")
+    print("3. 🔐 Login Mode")
+    print("4. 🧪 Test Mode (Demo)")
+    print("5. ❌ Exit")
     print("=" * 60)
 
 async def run_test_mode():
@@ -1325,6 +2045,264 @@ async def run_test_mode():
             print(f"❌ Test mode failed: {e}")
             logger.error(f"Test mode error: {e}")
 
+async def run_automated_mode():
+    """Run the automated web browsing mode with natural language"""
+    print("=" * 60)
+    print("🤖 UNIFIED WEB AGENT - AUTOMATED MODE")
+    print("=" * 60)
+    print("1. 🌐 Single Task Automation")
+    print("2. 🔄 Full Workflow Automation")
+    print("3. ❌ Back to Main Menu")
+    print("=" * 60)
+    
+    choice = input("Choose option (1-3): ").strip()
+    
+    if choice == "1":
+        await run_single_task_automation()
+    elif choice == "2":
+        await run_full_workflow_automation()
+    elif choice == "3":
+        return
+    else:
+        print("❌ Invalid choice. Returning to main menu.")
+
+async def run_single_task_automation():
+    """Run automation for a single natural language task"""
+    print("=" * 60)
+    print("🤖 SINGLE TASK AUTOMATION")
+    print("=" * 60)
+    print("Examples:")
+    print("  - 'navigate to github.com'")
+    print("  - 'login to github'")
+    print("  - 'search for python tutorials'")
+    print("  - 'fill out the contact form'")
+    print("=" * 60)
+    
+    # Get URL and task from user
+    url = input("🌐 Enter starting URL (or press Enter for test site): ").strip()
+    if not url:
+        url = os.getenv("TEST_URL", "https://httpbin.org/forms/post")
+        print(f"Using test URL: {url}")
+    
+    task = input("💬 Enter the task to automate: ").strip()
+    if not task:
+        print("❌ No task specified. Returning to main menu.")
+        return
+    
+    async with UnifiedWebAgent() as agent:
+        try:
+            # Navigate to the URL
+            await agent.navigate(url)
+            print(f"🌐 Navigated to: {agent.state.current_url}")
+            
+            # Run automation for the task
+            print(f"🤖 Automating task: {task}")
+            results = await agent.run_automation(task)
+            
+            # Display results
+            if results["success"]:
+                print(f"🎉 Task completed successfully!")
+                print(f"   Steps executed: {results['steps_executed']}/{results['total_steps']}")
+                if results["screenshots"]:
+                    print(f"   Screenshots: {', '.join(results['screenshots'])}")
+            else:
+                print(f"❌ Task failed or partially completed")
+                print(f"   Steps executed: {results['steps_executed']}/{results['total_steps']}")
+                if results["errors"]:
+                    print(f"   Errors: {'; '.join(results['errors'])}")
+            
+            input("\nPress Enter to continue...")
+            
+        except Exception as e:
+            print(f"❌ Automation failed: {e}")
+            logger.error(f"Automation error: {e}")
+            input("\nPress Enter to continue...")
+
+async def run_full_workflow_automation():
+    """Run fully automated workflow without user intervention"""
+    print("=" * 60)
+    print("🤖 FULL WORKFLOW AUTOMATION")
+    print("=" * 60)
+    print("This mode will automatically execute a complete workflow")
+    print("without requiring step-by-step user input.")
+    print("=" * 60)
+    
+    # Get workflow details
+    url = input("🌐 Enter starting URL: ").strip()
+    if not url:
+        print("❌ URL is required for full automation. Returning to main menu.")
+        return
+    
+    workflow_description = input("📝 Describe the complete workflow to automate: ").strip()
+    if not workflow_description:
+        print("❌ Workflow description is required. Returning to main menu.")
+        return
+    
+    print("\n📋 Workflow Summary:")
+    print(f"   Starting URL: {url}")
+    print(f"   Workflow: {workflow_description}")
+    confirm = input("\nStart automation? (y/N): ").strip().lower()
+    
+    if confirm != "y":
+        print("❌ Automation cancelled. Returning to main menu.")
+        return
+    
+    async with UnifiedWebAgent() as agent:
+        try:
+            # Navigate to the starting URL
+            print(f"🌐 Navigating to starting URL: {url}")
+            await agent.navigate(url)
+            print(f"✅ Successfully loaded: {agent.state.current_url}")
+            
+            # Parse workflow into individual tasks
+            tasks = await parse_workflow_into_tasks(agent, workflow_description)
+            
+            print(f"📋 Parsed workflow into {len(tasks)} tasks:")
+            for i, task in enumerate(tasks, 1):
+                print(f"   {i}. {task}")
+            
+            # Execute each task in sequence
+            print("\n🚀 Starting automated workflow execution...")
+            
+            for i, task in enumerate(tasks, 1):
+                print(f"\n📍 Task {i}/{len(tasks)}: {task}")
+                
+                # Check if task is a navigation command
+                if any(keyword in task.lower() for keyword in ['navigate to', 'go to', 'visit', 'open']):
+                    url = extract_url_from_command(task, agent.config)
+                    if url:
+                        print(f"🌐 Navigating to {url}...")
+                        await agent.navigate(url)
+                        await asyncio.sleep(2)
+                        print(f"✅ Successfully navigated to: {agent.state.current_url}")
+                        continue
+                
+                # Execute the task
+                results = await agent.run_automation(task)
+                
+                # Check results
+                if results["success"]:
+                    print(f"✅ Task completed successfully!")
+                else:
+                    print(f"⚠️ Task had issues: {'; '.join(results.get('errors', ['Unknown error']))}")
+                    retry = input("Retry this task? (y/N): ").strip().lower()
+                    if retry == "y":
+                        print("🔄 Retrying task...")
+                        results = await agent.run_automation(task)
+                        if not results["success"]:
+                            print("❌ Task failed again. Continuing with next task...")
+                
+                # Take a screenshot after each task
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                screenshot_name = f"workflow_task{i}_{timestamp}.png"
+                await agent.take_screenshot(screenshot_name)
+                print(f"📸 Screenshot saved: {screenshot_name}")
+                
+                # Wait between tasks
+                await asyncio.sleep(agent.config.automation_delay)
+            
+            # Final screenshot
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_screenshot = f"workflow_final_{timestamp}.png"
+            await agent.take_screenshot(final_screenshot)
+            
+            print("\n🎉 Workflow automation completed!")
+            print(f"📸 Final screenshot: {final_screenshot}")
+            
+            input("\nPress Enter to continue...")
+            
+        except Exception as e:
+            print(f"❌ Workflow automation failed: {e}")
+            logger.error(f"Workflow automation error: {e}")
+            input("\nPress Enter to continue...")
+
+async def parse_workflow_into_tasks(agent, workflow_description):
+    """Parse a workflow description into individual tasks using AI"""
+    try:
+        # First try to use Gemini AI if available
+        if agent.gemini_ai.client:
+            prompt = f"""
+            Parse the following workflow description into a list of individual tasks:
+            
+            Workflow: {workflow_description}
+            
+            Return a JSON array of tasks, where each task is a simple, actionable instruction.
+            Example: ["Navigate to example.com", "Click login button", "Fill username field with 'user'"]
+            """
+            
+            response = agent.gemini_ai.client.generate_content(prompt)
+            
+            # Try to extract JSON array from response
+            import re
+            import json
+            
+            json_match = re.search(r'\[.*\]', response.text, re.DOTALL)
+            if json_match:
+                try:
+                    tasks = json.loads(json_match.group())
+                    if isinstance(tasks, list) and len(tasks) > 0:
+                        return tasks
+                except:
+                    pass
+        
+        # Fallback to simple parsing
+        return fallback_workflow_parsing(workflow_description)
+        
+    except Exception as e:
+        logger.error(f"Error parsing workflow: {e}")
+        return fallback_workflow_parsing(workflow_description)
+
+def fallback_workflow_parsing(workflow_description):
+    """Fallback method to parse workflow description into tasks"""
+    # Split by common separators
+    tasks = []
+    
+    # Try to split by numbered items like "1.", "2.", etc.
+    if re.search(r'\d+\.', workflow_description):
+        parts = re.split(r'\d+\.', workflow_description)
+        tasks = [part.strip() for part in parts if part.strip()]
+    
+    # If that didn't work, try splitting by periods, commas, or semicolons
+    elif len(tasks) == 0:
+        parts = re.split(r'[.;]', workflow_description)
+        tasks = [part.strip() for part in parts if part.strip()]
+    
+    # If still no tasks, try splitting by "and" or "then"
+    elif len(tasks) == 0:
+        parts = re.split(r'\s+(?:and|then)\s+', workflow_description, flags=re.IGNORECASE)
+        tasks = [part.strip() for part in parts if part.strip()]
+    
+    # If all else fails, use the whole description as one task
+    if len(tasks) == 0:
+        tasks = [workflow_description]
+    
+    return tasks
+
+def extract_url_from_command(command: str, config) -> str:
+    """Extract URL from natural language command"""
+    import re
+    
+    # Look for explicit URLs
+    url_pattern = r'https?://[^\s]+'
+    urls = re.findall(url_pattern, command)
+    if urls:
+        return urls[0]
+    
+    # Look for website names
+    words = command.lower().split()
+    for i, word in enumerate(words):
+        if word in ['to', 'visit', 'open', 'navigate']:
+            if i + 1 < len(words):
+                potential_site = words[i + 1]
+                # Check if it's a known website
+                if potential_site in config.website_urls:
+                    return config.website_urls[potential_site]
+                # Check if it looks like a domain
+                if '.' in potential_site or potential_site.endswith('.com'):
+                    return potential_site
+    
+    return None
+
 async def main():
     """Main function"""
     print("🚀 Starting Unified Web Agent...")
@@ -1338,6 +2316,9 @@ async def main():
         elif mode == "interactive":
             await run_interactive_mode()
             return
+        elif mode == "automated":
+            await run_automated_mode()
+            return
         elif mode == "login":
             await run_login_mode()
             return
@@ -1346,15 +2327,17 @@ async def main():
     while True:
         try:
             show_main_menu()
-            choice = input("Choose option (1-4): ").strip()
+            choice = input("Choose option (1-5): ").strip()
             
             if choice == "1":
                 await run_interactive_mode()
             elif choice == "2":
-                await run_login_mode()
+                await run_automated_mode()
             elif choice == "3":
-                await run_test_mode()
+                await run_login_mode()
             elif choice == "4":
+                await run_test_mode()
+            elif choice == "5":
                 print("👋 Goodbye!")
                 break
             else:

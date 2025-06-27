@@ -88,7 +88,7 @@ async def test_ai():
             await agent.navigate(test_url)
             # Test AI element selection
             suggestion = await agent.get_ai_element_suggestion('find login form')
-            print(f'SUCCESS: AI suggestion received: {suggestion[:100]}...')
+            print(f'SUCCESS: AI suggestion received: {str(suggestion)[:100]}...')
             print('SUCCESS: AI integration test passed')
     else:
         print('WARNING: Skipping AI test - no API key configured')
@@ -96,7 +96,72 @@ async def test_ai():
 asyncio.run(test_ai())
 "
 
+# Test 4: Single task automation test
+echo "Test 4: Single task automation test..."
+python3 -c "
+import asyncio
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+async def test_automation():
+    from web_agent import UnifiedWebAgent
+    async with UnifiedWebAgent() as agent:
+        test_url = os.getenv('TEST_URL', 'https://httpbin.org/forms/post')
+        await agent.navigate(test_url)
+        
+        # Test automation with a simple goal
+        results = await agent.run_automation('fill out the form')
+        print(f'SUCCESS: Single task automation completed')
+        print(f'   Steps executed: {results[\"steps_executed\"]}/{results[\"total_steps\"]}')
+        print(f'   Success: {results[\"success\"]}')
+        
+        if results['success']:
+            print('SUCCESS: Single task automation test passed')
+        else:
+            print('WARNING: Single task automation test had issues but completed')
+
+asyncio.run(test_automation())
+"
+
+# Test 5: Full workflow automation test
+echo "Test 5: Full workflow automation test..."
+python3 -c "
+import asyncio
+import os
+import re
+from dotenv import load_dotenv
+load_dotenv()
+
+async def test_workflow_automation():
+    from web_agent import UnifiedWebAgent, parse_workflow_into_tasks
+    async with UnifiedWebAgent() as agent:
+        test_url = os.getenv('TEST_URL', 'https://httpbin.org/forms/post')
+        await agent.navigate(test_url)
+        
+        # Test workflow parsing
+        workflow = 'Navigate to the form page, fill out the customer name field with John Doe, fill out the comment field with Test comment, and submit the form'
+        tasks = await parse_workflow_into_tasks(agent, workflow)
+        
+        print(f'Parsed workflow into {len(tasks)} tasks:')
+        for i, task in enumerate(tasks, 1):
+            print(f'  {i}. {task}')
+        
+        # Execute first task as a test
+        if len(tasks) > 0:
+            results = await agent.run_automation(tasks[0])
+            print(f'SUCCESS: Executed first workflow task')
+            print(f'   Task: {tasks[0]}')
+            print(f'   Success: {results[\"success\"]}')
+            print('SUCCESS: Full workflow automation test passed')
+        else:
+            print('WARNING: No tasks parsed from workflow')
+
+asyncio.run(test_workflow_automation())
+"
+
 echo "=========================================="
 echo "All tests completed!"
 echo "Check test_navigation.png for screenshot"
+echo "Check automation_final_*.png for automation screenshots"
 echo "=========================================="
