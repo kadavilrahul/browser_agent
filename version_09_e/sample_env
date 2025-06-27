@@ -1,0 +1,9 @@
+# Browser Agent Configuration
+GEMINI_API_KEY=your_api_key_here
+HEADLESS=true  # Set to false for visible browser
+TIMEOUT=30000  # Page load timeout in ms
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+SCREENSHOT_DIR=./screenshots
+DATA_DIR=./data
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
+KEEP_BROWSER_OPEN=false  # Set to true to keep browser open after completion

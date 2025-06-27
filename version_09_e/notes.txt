@@ -1,0 +1,11 @@
+Report
+start_browser.py is running sucessfully
+navigate.py is running sucessfully
+
+-----------------------------------------------------------------
+The workflow sequence in main.py shows the execution order:
+
+First: start_browser.py (launches browser)
+Next: navigate.py (handles URL navigation)
+Then: extract_data.py (performs data extraction)
+Finally: save_data.py (saves results)
