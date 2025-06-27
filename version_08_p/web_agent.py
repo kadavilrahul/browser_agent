@@ -2,6 +2,9 @@
 
 """
 Unified Web Browsing Agent with AI Integration
+Supports two modes:
+1. Automated (using LLM API)
+2. Manual (interactive)
 """
 
 import asyncio
@@ -36,10 +39,8 @@ except ImportError:
 
 try:
     from agno.agent import Agent
-    from agno.models.openai import OpenAIChat
 except ImportError:
     Agent = None
-    OpenAIChat = None
 
 # Configure logging
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -127,11 +128,13 @@ class Config:
         
         # Automation Configuration
         self.automation_mode = os.getenv('AUTOMATION_MODE', 'false').lower() == 'true'
-        self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
-        self.openai_model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
         self.max_automation_steps = int(os.getenv('MAX_AUTOMATION_STEPS', '10'))
         self.automation_delay = int(os.getenv('AUTOMATION_DELAY', '2'))
         self.default_mode = os.getenv('DEFAULT_MODE', 'interactive')
+
+        # Validate required API keys based on mode
+        if self.default_mode == 'automated' and not self.gemini_api_key:
+            logger.warning("GEMINI_API_KEY is recommended for automated mode")
         
         # Popular website URLs
         self.website_urls = {
@@ -318,8 +321,16 @@ class GeminiAI:
     
     def _initialize_client(self):
         """Initialize Gemini AI client"""
-        if not genai or not self.config.gemini_api_key or self.config.gemini_api_key == 'your_gemini_api_key_here':
-            logger.warning("Gemini AI not available - missing API key or library")
+        if not genai:
+            logger.warning("Gemini AI not available - genai library not found")
+            return
+            
+        if not self.config.gemini_api_key:
+            logger.error("Gemini AI requires GEMINI_API_KEY environment variable")
+            return
+            
+        if self.config.gemini_api_key == 'your_gemini_api_key_here':
+            logger.error("Invalid GEMINI_API_KEY - please configure a valid key")
             return
         
         try:
@@ -438,27 +449,42 @@ class AgnoAgent:
         self._initialize_agent()
     
     def _initialize_agent(self):
-        """Initialize Agno agent"""
-        if not Agent or not OpenAIChat:
+        """Initialize Agno agent with Gemini"""
+        if not Agent:
             logger.warning("Agno agent not available - missing library")
             return
+            
+        if not self.config.gemini_api_key:
+            logger.warning("Agno agent requires GEMINI_API_KEY for full functionality")
         
         try:
-            # Initialize with OpenAI model if API key is available
-            if self.config.openai_api_key and self.config.openai_api_key != 'your_openai_api_key_here':
-                model = OpenAIChat(
-                    id=self.config.openai_model,
-                    api_key=self.config.openai_api_key
-                )
+            # Initialize with Gemini if API key is available
+            if self.config.gemini_api_key and self.config.gemini_api_key != 'your_gemini_api_key_here':
+                if not genai:
+                    logger.warning("Gemini AI not available - genai library not found")
+                    return
+                    
+                genai.configure(api_key=self.config.gemini_api_key)
+                gemini_model = genai.GenerativeModel(self.config.gemini_model)
+                
+                # Create custom model wrapper for Agno
+                class GeminiModel:
+                    def __init__(self, model):
+                        self.model = model
+                    
+                    async def run(self, prompt):
+                        response = self.model.generate_content(prompt)
+                        return response.text
+                
+                model = GeminiModel(gemini_model)
                 self.agent = Agent(
                     model=model,
-                    description="Web browsing validation and execution agent that helps with automated browser actions",
+                    description="Web browsing validation and execution agent with Gemini AI",
                     markdown=True,
                     exponential_backoff=True,
-                    retries=2,
-                    retry_delay=1
+                    retries=2
                 )
-                logger.info("Agno agent initialized with OpenAI model")
+                logger.info("Agno agent initialized with Gemini model")
             else:
                 # Create basic agent structure without model
                 self.agent = Agent(
@@ -469,7 +495,7 @@ class AgnoAgent:
                     retries=2,
                     retry_delay=1
                 )
-                logger.warning("Agno agent initialized without OpenAI model - limited functionality")
+                logger.warning("Agno agent initialized without Gemini model - limited functionality")
         except Exception as e:
             logger.error(f"Failed to initialize Agno agent: {e}")
             self.agent = None
@@ -763,11 +789,17 @@ class AgnoAgent:
         return steps
 
 class UnifiedWebAgent:
-    """Unified web browsing agent with AI integration and all functionalities"""
+    """Unified web browsing agent with AI integration and dual mode operation
+    
+    Modes:
+    - automated: Uses AI to perform actions automatically
+    - manual: Interactive mode with user control
+    """
     
     def __init__(self, headless: Optional[bool] = None):
-        """Initialize the agent"""
+        """Initialize the agent with dual mode support"""
         self.config = Config()
+        self.current_mode = self.config.default_mode  # automated or interactive
         
         if headless is not None:
             self.config.headless = headless
@@ -965,7 +997,7 @@ class UnifiedWebAgent:
             return f"Page summary unavailable: {str(e)}"
 
     # Login functionality methods
-    async def login_to_website(self, url: str, username: str, password: str) -> bool:
+    async def login_to_website(self, url: str, username: str = None, password: str = None) -> bool:
         """Universal login function for any website"""
         try:
             logger.info(f"Attempting to login to {url}")
@@ -975,18 +1007,133 @@ class UnifiedWebAgent:
             await self.navigate(full_url)
             await asyncio.sleep(2)
 
-            # Common selectors for login forms
-            common_selectors = {
-                'username': [
-                    'input[type="email"]', 'input[type="text"]', 'input[name="username"]',
-                    'input[name="email"]', 'input[id="email"]', 'input[id="username"]', 'input[name="login"]'
-                ],
-                'password': ['input[type="password"]', 'input[name="password"]', 'input[id="password"]'],
-                'submit': [
-                    'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Sign in")',
-                    'button:has-text("Log in")', 'button:has-text("Login")', 'input[name="commit"]'
-                ]
-            }
+            # Special handling for GitHub
+            if 'github.com' in full_url:
+                # GitHub-specific selectors
+                common_selectors = {
+                    'username': ['input[name="login"]'],
+                    'password': ['input[name="password"]'],
+                    'submit': ['input[name="commit"]', 'button[data-signin-label="Sign in"]']
+                }
+                
+                # Prompt for credentials if not provided
+                if username is None:
+                    username = input("GitHub username/email: ").strip()
+                if password is None:
+                    password = input("GitHub password: ").strip()
+                
+                # Take pre-login screenshot
+                await self.take_screenshot("github_pre_login.png")
+                
+                # Enhanced GitHub login flow
+                try:
+                    # Find and fill username field
+                    username_field = None
+                    for selector in common_selectors['username']:
+                        try:
+                            username_field = await self.page.wait_for_selector(selector, timeout=5000)
+                            if username_field:
+                                await username_field.fill(username)
+                                break
+                        except:
+                            continue
+                    
+                    if not username_field:
+                        raise Exception("Could not find GitHub username field")
+                    
+                    # Find and fill password field
+                    password_field = None
+                    for selector in common_selectors['password']:
+                        try:
+                            password_field = await self.page.wait_for_selector(selector, timeout=5000)
+                            if password_field:
+                                await password_field.fill(password)
+                                break
+                        except:
+                            continue
+                    
+                    if not password_field:
+                        raise Exception("Could not find GitHub password field")
+                    
+                    # Find and click submit button
+                    submit_button = None
+                    for selector in common_selectors['submit']:
+                        try:
+                            submit_button = await self.page.wait_for_selector(selector, timeout=5000)
+                            if submit_button:
+                                await submit_button.click()
+                                break
+                        except:
+                            continue
+                    
+                    if not submit_button:
+                        await password_field.press("Enter")
+                    
+                    # Handle potential 2FA
+                    try:
+                        otp_selector = 'input[name="otp"]'
+                        await self.page.wait_for_selector(otp_selector, timeout=3000)
+                        otp = input("GitHub 2FA code: ").strip()
+                        otp_field = await self.page.wait_for_selector(otp_selector)
+                        await otp_field.fill(otp)
+                        await self.page.click('button[type="submit"]')
+                    except:
+                        pass  # No 2FA required
+                    
+                    # Verify login success
+                    await self.page.wait_for_load_state("networkidle")
+                    await asyncio.sleep(2)
+                    
+                    # Take post-login screenshot
+                    await self.take_screenshot("github_post_login.png")
+                    
+                    # Check for success indicators
+                    success = await self.verify_login_success(full_url)
+                    if success:
+                        self.state.logged_in = True
+                        return True
+                    
+                    return False
+
+    async def verify_login_success(self, full_url: str) -> bool:
+        """Verify if login was successful by checking multiple indicators"""
+        # Check login success indicators
+        success_indicators = [
+            ".avatar", ".user-avatar", ".profile-pic", "a[href*=\"logout\"]",
+            "a[href*=\"signout\"]", ".logout-button", ".user-menu", ".dashboard"
+        ]
+
+        # Check URL change
+        current_url = self.page.url
+        if current_url != full_url and "login" not in current_url.lower():
+            return True
+
+        # Check for success indicators
+        for selector in success_indicators:
+            try:
+                await self.page.wait_for_selector(selector, timeout=2000)
+                return True
+            except:
+                continue
+
+        return False
+                except Exception as e:
+                    logger.error(f"GitHub login failed: {e}")
+                    await self.take_screenshot("github_login_error.png")
+                    return False
+            else:
+                # Common selectors for other websites
+                selectors = {
+                    'username': [
+                        'input[type="email"]', 'input[type="text"]', 'input[name="username"]',
+                        'input[name="email"]', 'input[id="email"]', 'input[id="username"]', 'input[name="login"]'
+                    ],
+                    'password': ['input[type="password"]', 'input[name="password"]', 'input[id="password"]'],
+                    'submit': [
+                        'button[type="submit"]', 'input[type="submit"]', 'button:has-text("Sign in")',
+                        'button:has-text("Log in")', 'button:has-text("Login")', 'input[name="commit"]'
+                    ]
+                }
 
             # Find and fill username field
             username_field = None
@@ -1609,7 +1756,7 @@ class UnifiedWebAgent:
             logger.error(f"Failed to execute step: {e}")
             return False
     
-    async def run_automation(self, user_goal: str, url: str = None) -> Dict[str, Any]:
+    async def run_automation(self, user_goal: str, url: str = None, output_file: str = None) -> Dict[str, Any]:
         """Run full automation based on user goal"""
         results = {
             "goal": user_goal,
@@ -1617,7 +1764,8 @@ class UnifiedWebAgent:
             "steps_executed": 0,
             "total_steps": 0,
             "errors": [],
-            "screenshots": []
+            "screenshots": [],
+            "output_file": output_file
         }
         
         try:
@@ -1682,6 +1830,17 @@ class UnifiedWebAgent:
             if results["steps_executed"] > 0:
                 results["success"] = True
                 print(f"\n🎉 Automation completed! {results['steps_executed']}/{results['total_steps']} steps executed")
+                
+                # Write results to file if specified
+                if output_file:
+                    try:
+                        with open(output_file, 'w') as f:
+                            json.dump(results, f, indent=2)
+                        print(f"📄 Results saved to {output_file}")
+                    except Exception as e:
+                        error_msg = f"Failed to save results: {str(e)}"
+                        results["errors"].append(error_msg)
+                        logger.error(error_msg)
             else:
                 print(f"\n❌ Automation failed - no steps executed successfully")
             
@@ -1999,12 +2158,12 @@ async def run_login_mode():
             logger.error(f"Login error: {e}")
 
 def show_main_menu():
-    """Show the main menu"""
+    """Show the main menu with dual mode options"""
     print("\n" + "=" * 60)
-    print("🤖 UNIFIED WEB AGENT WITH AI INTEGRATION")
+    print("🤖 UNIFIED WEB AGENT - DUAL MODE")
     print("=" * 60)
     print("1. 🌐 Interactive Browsing Mode")
-    print("2. 🤖 Automated Mode (Natural Language)")
+    print("2. 🤖 Automated Mode (Gemini AI)")
     print("3. 🔐 Login Mode")
     print("4. 🧪 Test Mode (Demo)")
     print("5. ❌ Exit")
@@ -2073,7 +2232,7 @@ async def run_single_task_automation():
     print("=" * 60)
     print("Examples:")
     print("  - 'navigate to github.com'")
-    print("  - 'login to github'")
+    print("  - 'login to github with user test and password pass'")
     print("  - 'search for python tutorials'")
     print("  - 'fill out the contact form'")
     print("=" * 60)
@@ -2089,6 +2248,8 @@ async def run_single_task_automation():
         print("❌ No task specified. Returning to main menu.")
         return
     
+    output_file = input("💾 Enter output file path (optional): ").strip()
+    
     async with UnifiedWebAgent() as agent:
         try:
             # Navigate to the URL
@@ -2097,7 +2258,7 @@ async def run_single_task_automation():
             
             # Run automation for the task
             print(f"🤖 Automating task: {task}")
-            results = await agent.run_automation(task)
+            results = await agent.run_automation(task, url=url, output_file=output_file)
             
             # Display results
             if results["success"]:

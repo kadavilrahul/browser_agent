@@ -57,7 +57,7 @@ setup() {
     if [ -f "requirements.txt" ]; then
         pip install -r requirements.txt >/dev/null 2>&1
     else
-        pip install playwright python-dotenv requests agno google-generativeai >/dev/null 2>&1
+        pip install playwright python-dotenv requests agno google-generativeai protobuf >/dev/null 2>&1
     fi
     
     # Install Playwright browsers
@@ -93,6 +93,7 @@ DISABLE_AUTOMATION_DETECTION=true
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.0-flash
 GEMINI_ENDPOINT=https://generativelanguage.googleapis.com/v1beta/models/
+GEMINI_SAFETY_SETTINGS=block_none
 
 # Default Mode
 DEFAULT_MODE=interactive
@@ -177,6 +178,15 @@ try:
     print('SUCCESS: Web agent imports successfully')
     config = web_agent.Config()
     print('SUCCESS: Configuration loaded')
+    
+    # Test Gemini connection
+    from web_agent import AgnoAgent
+    agent = AgnoAgent(config)
+    test_response = agent.generate('Test connection')
+    if not test_response or len(test_response) < 5:
+        raise Exception('Gemini connection test failed - empty or short response')
+    print('SUCCESS: Gemini connection verified')
+    
     print('SUCCESS: Setup verification completed!')
 except Exception as e:
     print('ERROR: Setup verification failed:', e)
@@ -192,15 +202,16 @@ except Exception as e:
 
 # Main menu
 show_menu() {
-    echo "=========================================="
-    echo "    UNIFIED WEB AGENT WITH AI"
-    echo "=========================================="
-    echo "1. Interactive Browsing Mode"
-    echo "2. Login Mode"
-    echo "3. Test Mode"
-    echo "4. Setup Verification"
-    echo "5. Exit"
-    echo "=========================================="
+    echo "------------------------------------------"
+    echo "UNIFIED WEB AGENT WITH GEMINI AI"
+    echo "------------------------------------------"
+    echo "1. Interactive Mode"
+    echo "2. Automated Mode"
+    echo "3. Login Mode"
+    echo "4. Test Mode"
+    echo "5. Setup Check"
+    echo "6. Exit"
+    echo "------------------------------------------"
 }
 
 # --- Main Execution ---
@@ -223,15 +234,18 @@ while true; do
             run_app "interactive"
             ;;
         2)
-            run_app "login"
+            run_app "automated"
             ;;
         3)
-            run_app "test"
+            run_app "login"
             ;;
         4)
-            run_app "setup"
+            run_app "test"
             ;;
         5)
+            run_app "setup"
+            ;;
+        6)
             echo "Goodbye!"
             exit 0
             ;;

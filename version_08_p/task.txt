@@ -7,7 +7,8 @@ Tasks for full browser automation:
 5. When a user visits he should be able to browse and login completely every website using only natural language chat in sentences
 6. Check reference.txt for agno ducumentation
 7. Gemini API is already in .env
-8. Run end to end test for full automation
+8. Automated mode should work with instruction like "Open github with userid kadavilrahul and password Karimpadam4@ and search newest repository. 
+9. Need to check if agno agent is fully functional
 
 The codebase should have -
 Has minimalistic menu options
