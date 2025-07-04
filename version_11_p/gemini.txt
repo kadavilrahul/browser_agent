@@ -1,0 +1,77 @@
+Check if gemini is installed first 
+
+Examples
+Once the CLI is running, you can start interacting with Gemini from your shell.
+
+You can start a project from a new directory:
+
+cd new-project/
+gemini
+> Write me a Gemini Discord bot that answers questions using a FAQ.md file I will provide
+Or work with an existing project:
+
+git clone https://github.com/google-gemini/gemini-cli
+cd gemini-cli
+gemini
+> Give me a summary of all of the changes that went in yesterday
+Next steps
+Learn how to contribute to or build from the source.
+Explore the available CLI Commands.
+If you encounter any issues, review the Troubleshooting guide.
+For more comprehensive documentation, see the full documentation.
+Take a look at some popular tasks for more inspiration.
+Troubleshooting
+Head over to the troubleshooting guide if you're having issues.
+
+Popular tasks
+Explore a new codebase
+Start by cding into an existing or newly-cloned repository and running gemini.
+
+> Describe the main pieces of this system's architecture.
+> What security mechanisms are in place?
+Work with your existing code
+> Implement a first draft for GitHub issue #123.
+> Help me migrate this codebase to the latest version of Java. Start with a plan.
+Automate your workflows
+Use MCP servers to integrate your local system tools with your enterprise collaboration suite.
+
+> Make me a slide deck showing the git history from the last 7 days, grouped by feature and team member.
+> Make a full-screen web app for a wall display to show our most interacted-with GitHub issues.
+Interact with your system
+> Convert all the images in this directory to png, and rename them to use dates from the exif data.
+> Organise my PDF invoices by month of expenditure.
+Terms of Service and Privacy Notice
+For details on the terms of service and privacy notice applicable to your use of Gemini CLI, see the Terms of Service and Privacy Notice.
+
+root@ubuntu-8gb-multiple-websites:~/test# gemini "How to build a LinkedIn bot?"
+Options:
+  -m, --model                    Model      [string] [default: "gemini-2.5-pro"]
+  -p, --prompt                   Prompt. Appended to input on stdin (if any).
+                                                                        [string]
+  -s, --sandbox                  Run in sandbox?                       [boolean]
+      --sandbox-image            Sandbox image URI.                     [string]
+  -d, --debug                    Run in debug mode?   [boolean] [default: false]
+  -a, --all_files                Include ALL files in context?
+                                                      [boolean] [default: false]
+      --show_memory_usage        Show memory usage in status bar
+                                                      [boolean] [default: false]
+  -y, --yolo                     Automatically accept all actions (aka YOLO
+                                 mode, see
+                                 https://www.youtube.com/watch?v=xvFZjo5PgG0 for
+                                 more details)?       [boolean] [default: false]
+      --telemetry                Enable telemetry? This flag specifically
+                                 controls if telemetry is sent. Other
+                                 --telemetry-* flags set specific values but do
+                                 not enable telemetry on their own.    [boolean]
+      --telemetry-target         Set the telemetry target (local or gcp).
+                                 Overrides settings files.
+                                              [string] [choices: "local", "gcp"]
+      --telemetry-otlp-endpoint  Set the OTLP endpoint for telemetry. Overrides
+                                 environment variables and settings files.
+                                                                        [string]
+      --telemetry-log-prompts    Enable or disable logging of user prompts for
+                                 telemetry. Overrides settings files.  [boolean]
+  -c, --checkpointing            Enables checkpointing of file edits
+                                                      [boolean] [default: false]
+  -v, --version                  Show version number                   [boolean]
+  -h, --help                     Show help                             [boolean]
