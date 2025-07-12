@@ -37,7 +37,7 @@ class Config:
             # Screenshot settings
             'screenshot_dir': os.getenv('SCREENSHOT_DIR', 'screenshots'),
             'screenshot_quality': self._get_int('SCREENSHOT_QUALITY', 90),
-            'auto_screenshot': self._get_bool('AUTO_SCREENSHOT', True),
+            'auto_screenshot': self._get_bool('AUTO_SCREENSHOT', False),
             
             # Element detection settings
             'element_selector_timeout': self._get_int('ELEMENT_SELECTOR_TIMEOUT', 2000),
@@ -53,8 +53,8 @@ class Config:
             'default_url': os.getenv('DEFAULT_URL', 'https://www.google.com'),
             
             # Login settings
-            'demo_mode': self._get_bool('DEMO_MODE', True),
-            'allow_real_login': self._get_bool('ALLOW_REAL_LOGIN', False),
+            'demo_mode': self._get_bool('DEMO_MODE', False),
+            'allow_real_login': self._get_bool('ALLOW_REAL_LOGIN', True),
             'max_login_attempts': self._get_int('MAX_LOGIN_ATTEMPTS', 3),
             
             # Gmail credentials (for testing only)

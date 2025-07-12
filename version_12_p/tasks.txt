@@ -1,0 +1,7 @@
+This is fully autonomous web browsing agent
+Make unified.py a fully autonomous
+Give option for user input like login or browse url's etc
+Fetch clickable elements on each webpage
+Index the clickable elements
+Use gemini LLM to analyse clickable elements
+Take actions like clicking links or insert text inputs for login etc

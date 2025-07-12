@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from config import Config
-from browser import BrowserManager
+from old.browser import BrowserManager
 
 @dataclass
 class LoginSession:
@@ -58,7 +58,13 @@ class LoginManager:
                 'input[type="password"]',
                 'input[name="password"]',
                 'input[id="password"]',
-                'input[placeholder*="password" i]'
+                'input[placeholder*="password" i]',
+                'input[type="password"][data-testid*="password"]',
+                'input[type="password"][aria-label*="Password"]',
+                'input[type="password"][autocomplete="current-password"]',
+                'input[type="password"][data-initial-dir="ltr"]',
+                'input[type="password"][jsname="YPqjbf"]',
+                'input[type="password"][jsname="HMPqjb"]'
             ],
             'submit': [
                 'button[type="submit"]',
