@@ -3,3 +3,4 @@
 venv
 *.log
 */_p/__pycache__
+version_12_p/__pycache__

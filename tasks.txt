@@ -1,0 +1,4 @@
+Go theough all folders and files
+I need a new consolidate and refined version version_12_p
+It should be minilalsitic and should have all essential fimctions
+Make PRD first with howmany files and lines of code you plan
