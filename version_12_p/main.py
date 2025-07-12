@@ -27,7 +27,7 @@ except ImportError:
     print("2. Activate it: source venv/bin/activate")
     print("3. Install requirements: pip install -r requirements.txt")
     print("4. Install browsers: playwright install")
-    print("Or use极 the setup script: ./run.sh setup")
+    print("Or use the setup script: ./run.sh setup")
     sys.exit(1)
 
 # Configure logging
@@ -47,7 +47,7 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.WARNING)
 
 # Create formatter
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(level极name)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
@@ -122,9 +122,6 @@ JS_GET_CLICKABLE_ELEMENTS = """
                window.getComputedStyle(element).visibility !== 'hidden' &&
                window.getComputedStyle(element).display !== 'none' &&
                window.getComputedStyle(element).opacity !== '0';
-    }
-    
-    // Helper function to check if element is in viewport
     }
     
     // Helper function to check if element is in viewport
@@ -219,6 +216,9 @@ JS_GET_CLICKABLE_ELEMENTS = """
         
         // Check if element is interactive
         if (isInteractive(element)) {
+            // Get element properties
+            const tagName = element.tagName.toLowerCase();
+            const text = getElementText(element).trim();
             // Get element properties
             const tagName = element.tagName.toLowerCase();
             const text = getElementText(element).trim();
