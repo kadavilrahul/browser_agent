@@ -1,6 +1,79 @@
-*.json
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+browser_agent_env/
+
+# Environment variables
 .env
-venv
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Runtime directories
+data/
+logs/
+screenshots/
 *.log
-*/_p/__pycache__
-version_12_p/__pycache__
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Browser automation
+clickable_elements.json
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.csv
+*.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Documentation
+docs/_build/
