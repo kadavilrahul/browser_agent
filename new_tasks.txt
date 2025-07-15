@@ -1,4 +1,4 @@
-Add run.sh which is main script to run the codebase
+Adda basic run.sh which is main script to run the codebase. Add python environment commands to it.
 Run.sh shall have user interface with numbers to choose from
-Create a README.md with correct git clone URL, fetch URL from config
+Create a basic README.md with correct git clone URL, fetch URL from config, reade .md files for context
 The README shall have description in few lines then git clone commands and then other sections
