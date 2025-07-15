@@ -126,13 +126,38 @@ check_setup() {
 
 # Function to run tests
 run_tests() {
-    echo "🧪 Running ROVO Browser Agent tests..."
+    echo "🧪 Running ROVO Browser Agent tests in headless mode..."
+    
+    # Check setup first
+    if ! check_setup; then
+        echo "⚠️  Setup required before testing. Run: ./run.sh --setup"
+        exit 1
+    fi
     
     # Activate virtual environment
     source venv/bin/activate
     
+    # Set headless mode for testing
+    export HEADLESS=true
+    export VERBOSE=false
+    
     # Run tests
+    echo "🤖 Starting headless browser tests..."
     python3 test_basic.py
+    
+    test_result=$?
+    
+    if [ $test_result -eq 0 ]; then
+        echo ""
+        echo "✅ All tests completed successfully!"
+        echo "🎯 ROVO Browser Agent is ready for production use."
+    else
+        echo ""
+        echo "⚠️  Some tests had issues. Check output above."
+        echo "💡 Try: ./run.sh --force-setup"
+    fi
+    
+    return $test_result
 }
 
 # Function to start the agent

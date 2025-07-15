@@ -4,6 +4,3 @@ Go through all the files, check all functions and list all functions that may be
 Prepare a report and give me as md file, I want earlier functions as they were tested thoroghly
 Create a list of fuctions and number of lines of code needed to accomplish the work, make a report
 Go through google, github, documnetation of other tools and make a new report.
-
-cp -r /root/projects/Repositories/browser_agent /home/rahuldineshk
-cp -r /root/projects/Repositories/browser_agent/gemini /home/rahuldineshk/browser_agent/
