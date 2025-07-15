@@ -1,0 +1,5 @@
+Go through all folders and files
+I want a new browser automation tool, give suggestions first
+Go through all the files, check all functions and list all functions that may be needed
+Prepare a report and give me as md file, I want earlier functions as they were tested
+

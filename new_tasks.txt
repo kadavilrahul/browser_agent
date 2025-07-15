@@ -1,0 +1,4 @@
+Add run.sh which is main script to run the codebase
+Run.sh shall have user interface with numbers to choose from
+Create a README.md with correct git clone URL, fetch URL from config
+The README shall have description in few lines then git clone commands and then other sections
